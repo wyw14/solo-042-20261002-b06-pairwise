@@ -60,9 +60,15 @@ func (i *Ingestor) Ingest(sample model.Sample) error {
 	default:
 		return errors.New("unsupported sample kind")
 	}
-	updated, err := i.vessels.ApplyTelemetry(probeState.VesselID, level, pressure, temperature, sample.ObservedAt)
+	updated, applied, err := i.vessels.ApplyTelemetry(probeState.VesselID, level, pressure, temperature, sample.ObservedAt)
 	if err != nil {
 		return err
+	}
+	if !applied {
+		i.mu.Lock()
+		i.dropped++
+		i.mu.Unlock()
+		return errors.New("sample was rejected by vessel state as stale or out of order")
 	}
 	i.snapshots.Apply(updated)
 	i.mu.Lock()

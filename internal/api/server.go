@@ -24,7 +24,6 @@ type Dependencies struct {
 	Telemetry      *telemetry.Ingestor
 	Receiver       *telemetry.Receiver
 	Health         *monitor.HealthService
-	ProbeMonitor   *monitor.ProbeMonitor
 	Suppressions   *alarm.SuppressionService
 	Now            func() time.Time
 }

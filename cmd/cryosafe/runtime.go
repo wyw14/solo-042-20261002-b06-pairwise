@@ -203,7 +203,6 @@ func buildRuntime(cfg config, now func() time.Time) (*runtime, error) {
 		Telemetry:      ingestor,
 		Receiver:       receiver,
 		Health:         healthService,
-		ProbeMonitor:   probeMonitor,
 		Suppressions:   suppressions,
 		Now:            now,
 	})

@@ -44,11 +44,21 @@ func (s *StateService) FinishFill(id string) (model.Vessel, error) {
 	})
 }
 
-func (s *StateService) ApplyTelemetry(id string, level, pressure, temperature float64, observedAt time.Time) (model.Vessel, error) {
-	return s.registry.Update(id, func(current model.Vessel) (model.Vessel, error) {
+// ApplyTelemetry folds a telemetry sample into vessel state. The returned
+// bool reports whether the sample was accepted: stale or out-of-order
+// samples (older than the vessel's last update by more than a minute) are
+// rejected and leave the state untouched.
+func (s *StateService) ApplyTelemetry(id string, level, pressure, temperature float64, observedAt time.Time) (model.Vessel, bool, error) {
+	applied := false
+	updated, err := s.registry.Update(id, func(current model.Vessel) (model.Vessel, error) {
 		if observedAt.Before(current.UpdatedAt.Add(-time.Minute)) {
 			return current, nil
 		}
+		applied = true
 		return current.WithTelemetry(level, pressure, temperature, observedAt), nil
 	})
+	if err != nil {
+		return model.Vessel{}, false, err
+	}
+	return updated, applied, nil
 }

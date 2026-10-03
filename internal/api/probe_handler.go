@@ -31,7 +31,8 @@ func (s *Server) publishProbeSample(writer http.ResponseWriter, request *http.Re
 		return
 	}
 	sample := probeState.NewSample(input.Value, s.deps.Now())
-	s.deps.ProbeMonitor.Observe(sample)
+	// Health and telemetry observers are notified by the ingestor only after
+	// the sample is actually accepted into vessel state; do not observe here.
 	if err := s.deps.Receiver.PublishSample(sample); err != nil {
 		writeError(writer, http.StatusConflict, err.Error())
 		return
