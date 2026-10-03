@@ -40,29 +40,26 @@ func (i *Ingestor) Ingest(sample model.Sample) error {
 		return errors.New("sample probe is not registered")
 	}
 	if !probeState.Connected || sample.CalibrationEpoch != probeState.CalibrationEpoch || sample.BindingGeneration != probeState.BindingGeneration {
-		i.mu.Lock()
-		i.dropped++
-		i.mu.Unlock()
+		i.recordDrop()
 		return errors.New("sample belongs to an obsolete probe generation")
 	}
-	vesselState, ok := i.vessels.Registry().Get(probeState.VesselID)
-	if !ok {
-		return errors.New("sample vessel is not registered")
-	}
-	level, pressure, temperature := vesselState.LevelMM, vesselState.PressureKPa, vesselState.TemperatureC
-	switch sample.Kind {
-	case model.ProbeLevel:
-		level = sample.Value
-	case model.ProbePressure:
-		pressure = sample.Value
-	case model.ProbeTemperature:
-		temperature = sample.Value
-	default:
+	if !sample.Kind.Valid() {
+		i.recordDrop()
 		return errors.New("unsupported sample kind")
 	}
-	updated, err := i.vessels.ApplyTelemetry(probeState.VesselID, level, pressure, temperature, sample.ObservedAt)
+	if _, ok := i.vessels.Registry().Get(probeState.VesselID); !ok {
+		return errors.New("sample vessel is not registered")
+	}
+	updated, applied, err := i.vessels.ApplyTelemetry(probeState.VesselID, sample.Kind, sample.Value, sample.ObservedAt)
 	if err != nil {
+		i.recordDrop()
 		return err
+	}
+	if !applied {
+		// Out-of-order sample declined by the vessel state: it must not reach
+		// snapshots or any downstream observer (fill, pressure, health).
+		i.recordDrop()
+		return errors.New("telemetry sample was superseded")
 	}
 	i.snapshots.Apply(updated)
 	i.mu.Lock()
@@ -73,6 +70,12 @@ func (i *Ingestor) Ingest(sample model.Sample) error {
 		observer(sample)
 	}
 	return nil
+}
+
+func (i *Ingestor) recordDrop() {
+	i.mu.Lock()
+	i.dropped++
+	i.mu.Unlock()
 }
 
 func (i *Ingestor) Stats() (accepted, dropped uint64) {

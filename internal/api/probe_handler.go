@@ -31,7 +31,6 @@ func (s *Server) publishProbeSample(writer http.ResponseWriter, request *http.Re
 		return
 	}
 	sample := probeState.NewSample(input.Value, s.deps.Now())
-	s.deps.ProbeMonitor.Observe(sample)
 	if err := s.deps.Receiver.PublishSample(sample); err != nil {
 		writeError(writer, http.StatusConflict, err.Error())
 		return

@@ -49,22 +49,33 @@ func (r *Registry) List() []model.Vessel {
 }
 
 func (r *Registry) Update(id string, apply func(model.Vessel) (model.Vessel, error)) (model.Vessel, error) {
+	next, _, err := r.UpdateResult(id, apply)
+	return next, err
+}
+
+// UpdateResult applies an update under the registry lock and reports whether the
+// callback actually produced a new state. apply must return the current vessel
+// unchanged (with a nil error) to decline the update without failing it.
+func (r *Registry) UpdateResult(id string, apply func(model.Vessel) (model.Vessel, error)) (model.Vessel, bool, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	current, ok := r.vessels[id]
 	if !ok {
-		return model.Vessel{}, errors.New("vessel not found")
+		return model.Vessel{}, false, errors.New("vessel not found")
 	}
 	next, err := apply(current)
 	if err != nil {
-		return model.Vessel{}, err
+		return model.Vessel{}, false, err
 	}
 	if next.ID != current.ID || next.Generation < current.Generation {
-		return model.Vessel{}, errors.New("vessel identity or generation changed illegally")
+		return model.Vessel{}, false, errors.New("vessel identity or generation changed illegally")
 	}
-	if err := next.Validate(); err != nil {
-		return model.Vessel{}, err
+	applied := next != current
+	if applied {
+		if err := next.Validate(); err != nil {
+			return model.Vessel{}, false, err
+		}
+		r.vessels[id] = next
 	}
-	r.vessels[id] = next
-	return next, nil
+	return next, applied, nil
 }
